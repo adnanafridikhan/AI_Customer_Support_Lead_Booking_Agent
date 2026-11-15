@@ -2,7 +2,7 @@
 
 **An AI-powered customer assistant built with n8n and OpenAI GPT-4o that answers customer inquiries, retrieves service pricing, captures leads, checks appointment availability, and books meetings.**
 
-![AI Customer Support and Lead Booking Agent](assets/banner.png)
+<img width="1536" height="1024" alt="banner" src="https://github.com/user-attachments/assets/2f080edc-fb12-4582-a09a-1e397fc89eb0" />
 
 ## Project Overview
 
@@ -87,4 +87,3 @@ Suitable for consulting agencies, IT service providers, marketing teams, profess
 ## Project Status
 
 This README documents the architecture and capabilities described for the project. An importable n8n workflow JSON is **not included** here; add your exported workflow after removing credentials and sensitive information.
-<img width="1536" height="1024" alt="banner" src="https://github.com/user-attachments/assets/38811cf9-8baa-4c35-9d94-4ec28377ecda" />

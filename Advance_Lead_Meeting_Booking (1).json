@@ -1,0 +1,931 @@
+{
+  "name": "Basic Lead Form → Google Meet Booking",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Lead → Meeting Booking (2-page form)\n**Page 1:** customer details + date.\n**Page 2:** only the FREE times for that date are shown (booked times never appear).\nThen: recheck → Google Calendar event + Google Meet → customer & admin emails → Google Sheet.\n\n**Setup:** Google Calendar credential (3 nodes), Google Sheets credential + pick your sheet (2 nodes). Sheet tab `Leads`, row 1 headers:\n`Submitted At | Name | Email | Phone | Company | Service | Message | Meeting Date | Meeting Time | Status | Google Meet Link`\nThen **Publish**. Form link: `/form/book-meeting`",
+        "height": 360,
+        "width": 520,
+        "color": 4
+      },
+      "id": "c7ddb0ed-165c-4567-9b9d-240146e72507",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Book a Meeting",
+        "formDescription": "Tell us about your project and choose a date. On the next page you will see the free times. Meetings are 30 minutes on Google Meet, Monday to Friday, 10:00 AM – 4:00 PM (Dubai time).",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "fieldName": "full_name",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email Address",
+              "fieldName": "email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Phone Number",
+              "fieldName": "phone",
+              "fieldType": "text",
+              "placeholder": "+971 50 123 4567",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company Name",
+              "fieldName": "company",
+              "fieldType": "text"
+            },
+            {
+              "fieldLabel": "Service Interested In",
+              "fieldName": "service",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "AI Automation"
+                  },
+                  {
+                    "option": "n8n Workflow Development"
+                  },
+                  {
+                    "option": "Mobile App Development"
+                  },
+                  {
+                    "option": "Web Development"
+                  },
+                  {
+                    "option": "Consulting"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Project Requirements / Message",
+              "fieldName": "message",
+              "fieldType": "textarea"
+            },
+            {
+              "fieldLabel": "Preferred Meeting Date (Monday–Friday)",
+              "fieldName": "meeting_date",
+              "fieldType": "date",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Next: Choose a Time",
+          "path": "book-meeting"
+        }
+      },
+      "id": "452c776e-3ffc-457c-b586-27e8e5bd8eca",
+      "name": "Website Lead Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "84ae62b0-792c-4dcd-9ad8-32dc9d435bfc"
+    },
+    {
+      "parameters": {
+        "resource": "calendar",
+        "operation": "availability",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "id"
+        },
+        "timeMin": "={{ DateTime.fromISO($json.meeting_date + 'T10:00', { zone: 'Asia/Dubai' }).toISO() }}",
+        "timeMax": "={{ DateTime.fromISO($json.meeting_date + 'T16:00', { zone: 'Asia/Dubai' }).toISO() }}",
+        "options": {
+          "outputFormat": "raw"
+        }
+      },
+      "id": "755c7001-8f76-46e8-9af3-1fe640330570",
+      "name": "Get Booked Times",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.4,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Which 30-minute times are still free on the chosen date?\nconst TZ = 'Asia/Dubai';\nconst date = $('Website Lead Form').first().json.meeting_date;          // e.g. 2026-12-16\nconst fb = $json.calendars || {};\nconst busy = ((fb.primary || Object.values(fb)[0] || {}).busy || [])\n  .map((b) => [DateTime.fromISO(b.start).toMillis(), DateTime.fromISO(b.end).toMillis()]);\nconst day = DateTime.fromISO(date, { zone: TZ });\nconst earliest = DateTime.now().setZone(TZ).plus({ minutes: 30 });    // no bookings in the next 30 min\nconst free = [];\nif (day.isValid && day.weekday <= 5) {                                 // Monday–Friday only\n  for (let m = 10 * 60; m + 30 <= 16 * 60; m += 30) {                  // 10:00 AM … 3:30 PM start times\n    const start = day.set({ hour: Math.floor(m / 60), minute: m % 60, second: 0, millisecond: 0 });\n    const a = start.toMillis(), b = start.plus({ minutes: 30 }).toMillis();\n    const taken = busy.some(([x, y]) => a < y && x < b);\n    if (!taken && start >= earliest) free.push(start.toFormat('h:mm a'));\n  }\n}\nreturn [{ json: { meeting_date: date, free_times: free, free_count: free.length,\n  date_text: day.isValid ? day.toFormat('cccc, d LLLL yyyy') : date, is_weekend: day.isValid && day.weekday > 5 } }];"
+      },
+      "id": "90c0d60e-4355-4bbf-9883-2b6ecaf10cab",
+      "name": "Find Free Times",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "c0fc6b4e-01f2-47ba-865f-823510d41963",
+              "leftValue": "={{ $json.free_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a4a98cf6-51a9-45e4-8228-d2852647641f",
+      "name": "Any Free Time?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "No free times on this date",
+        "completionMessage": "={{ $json.is_weekend ? 'Meetings are only available Monday to Friday.' : 'All times on ' + $json.date_text + ' are already booked.' }} Please choose another date: https://adnanafridikhan.app.n8n.cloud/form/book-meeting"
+      },
+      "id": "1ff9a5fd-1d79-4246-bdfa-72eecc21025e",
+      "name": "No Free Times",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        200
+      ],
+      "webhookId": "a79f74dd-0c83-4e44-9887-573ed3ef13e3"
+    },
+    {
+      "parameters": {
+        "operation": "page",
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([{ fieldLabel: 'Available Times (Dubai)', fieldName: 'meeting_time', fieldType: 'dropdown', requiredField: true, fieldOptions: { values: $json.free_times.map(t => ({ option: t })) } }]) }}",
+        "options": {
+          "formTitle": "Choose a Time",
+          "formDescription": "=Free times on {{ $json.date_text }} (Dubai time). Each meeting is 30 minutes.",
+          "buttonLabel": "Book Meeting"
+        }
+      },
+      "id": "56b5f99d-8e09-42ba-9715-2e189d630700",
+      "name": "Choose a Time",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        -100
+      ],
+      "webhookId": "7ba4217d-ff1f-4d4a-8cb1-3683e24bef6b"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "046f9d2a-36ad-45f4-ae29-18c45879ec26",
+              "name": "admin_email",
+              "value": "adnanafridi16@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "8673c603-8407-4439-9d44-6e3e74603fab",
+              "name": "meeting_time",
+              "value": "={{ ($json.meeting_time || $json['Available Times (Dubai)']) }}",
+              "type": "string"
+            },
+            {
+              "id": "1b2af9bd-7e41-4fa2-a7a0-3898303e342a",
+              "name": "start",
+              "value": "={{ DateTime.fromFormat($('Website Lead Form').item.json.meeting_date + ' ' + ($json.meeting_time || $json['Available Times (Dubai)']), 'yyyy-MM-dd h:mm a', { zone: 'Asia/Dubai' }).toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "4c46e855-eb15-4188-aca0-b1b68bef1b0a",
+              "name": "end",
+              "value": "={{ DateTime.fromFormat($('Website Lead Form').item.json.meeting_date + ' ' + ($json.meeting_time || $json['Available Times (Dubai)']), 'yyyy-MM-dd h:mm a', { zone: 'Asia/Dubai' }).plus({ minutes: 30 }).toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "7276159a-c9d0-4dfc-9367-1829ac64e65f",
+              "name": "date_text",
+              "value": "={{ DateTime.fromFormat($('Website Lead Form').item.json.meeting_date, 'yyyy-MM-dd').toFormat('cccc, d LLLL yyyy') }}",
+              "type": "string"
+            },
+            {
+              "id": "b91df915-5fa0-48dd-9b62-20c2a5345162",
+              "name": "time_text",
+              "value": "={{ ($json.meeting_time || $json['Available Times (Dubai)']) + ' – ' + DateTime.fromFormat(($json.meeting_time || $json['Available Times (Dubai)']), 'h:mm a').plus({ minutes: 30 }).toFormat('h:mm a') + ' (Dubai time)' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fdcd3130-c283-4704-b50b-dda0fddfbefb",
+      "name": "Prepare Meeting",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1100,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "calendar",
+        "operation": "availability",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "id"
+        },
+        "timeMin": "={{ $json.start }}",
+        "timeMax": "={{ $json.end }}",
+        "options": {
+          "outputFormat": "availability"
+        }
+      },
+      "id": "a46ac715-e8d6-4f16-9044-c968c20ffc8b",
+      "name": "Recheck Slot Free",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.4,
+      "position": [
+        1320,
+        -100
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "a8b8cbe4-42f0-48ac-a466-889ff4672026",
+              "leftValue": "={{ $json.available }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "83b7f1fb-2bdb-44c9-8c00-ad3bd66d701c",
+      "name": "Still Free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1540,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "conferenceDataVersion",
+              "value": "1"
+            },
+            {
+              "name": "sendUpdates",
+              "value": "all"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ summary: 'Lead Discussion – ' + $('Website Lead Form').item.json.full_name, description: 'Phone: ' + $('Website Lead Form').item.json.phone + '\\nCompany: ' + ($('Website Lead Form').item.json.company || '-') + '\\nService: ' + ($('Website Lead Form').item.json.service || '-') + '\\n\\nRequirements:\\n' + ($('Website Lead Form').item.json.message || '-'), start: { dateTime: $('Prepare Meeting').item.json.start, timeZone: 'Asia/Dubai' }, end: { dateTime: $('Prepare Meeting').item.json.end, timeZone: 'Asia/Dubai' }, attendees: [ { email: $('Website Lead Form').item.json.email }, { email: $('Prepare Meeting').item.json.admin_email } ], conferenceData: { createRequest: { requestId: $execution.id + '-meet', conferenceSolutionKey: { type: 'hangoutsMeet' } } } }) }}",
+        "options": {}
+      },
+      "id": "6f07bc40-230d-4476-be45-808bc0c1a218",
+      "name": "Create Google Meet Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1760,
+        -200
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Website Lead Form').item.json.email }}",
+        "subject": "Your Online Meeting Is Confirmed",
+        "emailType": "html",
+        "message": "=<p>Hi {{ $('Website Lead Form').item.json.full_name }},</p>\n<p>Thank you for contacting us. Your online meeting is confirmed:</p>\n<p><b>Date:</b> {{ $('Prepare Meeting').item.json.date_text }}<br><b>Time:</b> {{ $('Prepare Meeting').item.json.time_text }}<br><b>Duration:</b> 30 minutes<br><b>Google Meet:</b> <a href=\"{{ $json.hangoutLink }}\">{{ $json.hangoutLink }}</a></p>\n<p>A calendar invitation has also been sent to your email.</p>\n<p>Kind regards</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "5fad1aae-0ff3-452c-8b17-fbbc1f3ea265",
+      "name": "Email Customer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        -200
+      ],
+      "webhookId": "ddd675cc-b169-4f21-904a-8065fd837ba7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "glaz70JjomVaZkTZ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Prepare Meeting').item.json.admin_email }}",
+        "subject": "New Lead – Meeting Scheduled",
+        "emailType": "text",
+        "message": "=New lead – meeting scheduled\n\nName: {{ $('Website Lead Form').item.json.full_name }}\nEmail: {{ $('Website Lead Form').item.json.email }}\nPhone: {{ $('Website Lead Form').item.json.phone }}\nCompany: {{ $('Website Lead Form').item.json.company || '-' }}\nService: {{ $('Website Lead Form').item.json.service || '-' }}\nRequirements: {{ $('Website Lead Form').item.json.message || '-' }}\n\nDate: {{ $('Prepare Meeting').item.json.date_text }}\nTime: {{ $('Prepare Meeting').item.json.time_text }}\nGoogle Meet: {{ $('Create Google Meet Event').item.json.hangoutLink }}\nCalendar event: {{ $('Create Google Meet Event').item.json.htmlLink }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "68dd0a78-d7e3-44a8-b807-5720c609deb9",
+      "name": "Email Admin",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2200,
+        -200
+      ],
+      "webhookId": "723b728b-a0f6-4399-8e5c-8423b6f2086a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "glaz70JjomVaZkTZ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Submitted At": "={{ $now.setZone('Asia/Dubai').toFormat('yyyy-MM-dd HH:mm') }}",
+            "Name": "={{ $('Website Lead Form').item.json.full_name }}",
+            "Email": "={{ $('Website Lead Form').item.json.email }}",
+            "Phone": "={{ $('Website Lead Form').item.json.phone }}",
+            "Company": "={{ $('Website Lead Form').item.json.company || '' }}",
+            "Service": "={{ $('Website Lead Form').item.json.service || '' }}",
+            "Message": "={{ $('Website Lead Form').item.json.message || '' }}",
+            "Meeting Date": "={{ $('Prepare Meeting').item.json.date_text }}",
+            "Meeting Time": "={{ $('Prepare Meeting').item.json.time_text }}",
+            "Status": "Booked",
+            "Google Meet Link": "={{ $('Create Google Meet Event').item.json.hangoutLink }}"
+          },
+          "schema": [
+            {
+              "id": "Submitted At",
+              "displayName": "Submitted At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Service",
+              "displayName": "Service",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Meeting Date",
+              "displayName": "Meeting Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Meeting Time",
+              "displayName": "Meeting Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Google Meet Link",
+              "displayName": "Google Meet Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "82c5baa4-1bdc-4484-a73f-da4f927339ea",
+      "name": "Save Lead (Booked)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2420,
+        -200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Your meeting is booked!",
+        "completionMessage": "=See you on {{ $('Prepare Meeting').item.json.date_text }} at {{ $('Prepare Meeting').item.json.time_text }}. The Google Meet link and calendar invitation have been sent to {{ $('Website Lead Form').item.json.email }}."
+      },
+      "id": "58104098-b170-4a9c-8760-7472a069b124",
+      "name": "Booking Confirmed",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        2640,
+        -200
+      ],
+      "webhookId": "922ea0e3-0936-482d-a78d-8866c14f1f4f"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Submitted At": "={{ $now.setZone('Asia/Dubai').toFormat('yyyy-MM-dd HH:mm') }}",
+            "Name": "={{ $('Website Lead Form').item.json.full_name }}",
+            "Email": "={{ $('Website Lead Form').item.json.email }}",
+            "Phone": "={{ $('Website Lead Form').item.json.phone }}",
+            "Company": "={{ $('Website Lead Form').item.json.company || '' }}",
+            "Service": "={{ $('Website Lead Form').item.json.service || '' }}",
+            "Message": "={{ $('Website Lead Form').item.json.message || '' }}",
+            "Meeting Date": "={{ $('Prepare Meeting').item.json.date_text }}",
+            "Meeting Time": "={{ $('Prepare Meeting').item.json.time_text }}",
+            "Status": "Slot already taken",
+            "Google Meet Link": ""
+          },
+          "schema": [
+            {
+              "id": "Submitted At",
+              "displayName": "Submitted At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Service",
+              "displayName": "Service",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Meeting Date",
+              "displayName": "Meeting Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Meeting Time",
+              "displayName": "Meeting Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Google Meet Link",
+              "displayName": "Google Meet Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "5880c5af-ff01-4c6d-acb2-29007849f2f7",
+      "name": "Save Lead (Slot Taken)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1760,
+        60
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Sorry, this time was just booked",
+        "completionMessage": "Someone booked this time a moment ago. Please choose another time: https://adnanafridikhan.app.n8n.cloud/form/book-meeting"
+      },
+      "id": "e4e29794-52c6-44c4-b930-69ad33236b0a",
+      "name": "Slot Just Taken",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1980,
+        60
+      ],
+      "webhookId": "d1b51231-fff7-4e71-9b87-508d7b8a5ec5"
+    }
+  ],
+  "connections": {
+    "Website Lead Form": {
+      "main": [
+        [
+          {
+            "node": "Get Booked Times",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Booked Times": {
+      "main": [
+        [
+          {
+            "node": "Find Free Times",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Free Times": {
+      "main": [
+        [
+          {
+            "node": "Any Free Time?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Free Time?": {
+      "main": [
+        [
+          {
+            "node": "Choose a Time",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Free Times",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose a Time": {
+      "main": [
+        [
+          {
+            "node": "Prepare Meeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Meeting": {
+      "main": [
+        [
+          {
+            "node": "Recheck Slot Free",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recheck Slot Free": {
+      "main": [
+        [
+          {
+            "node": "Still Free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Free?": {
+      "main": [
+        [
+          {
+            "node": "Create Google Meet Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Lead (Slot Taken)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Meet Event": {
+      "main": [
+        [
+          {
+            "node": "Email Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Customer": {
+      "main": [
+        [
+          {
+            "node": "Email Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Admin": {
+      "main": [
+        [
+          {
+            "node": "Save Lead (Booked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead (Booked)": {
+      "main": [
+        [
+          {
+            "node": "Booking Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead (Slot Taken)": {
+      "main": [
+        [
+          {
+            "node": "Slot Just Taken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Dubai"
+  },
+  "pinData": {},
+  "active": false
+}
